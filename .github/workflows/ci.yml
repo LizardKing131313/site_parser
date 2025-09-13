@@ -1,0 +1,115 @@
+---
+name: CI
+
+"on":
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-test:
+    name: Lint, types, tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "UTF-8"
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: |
+            pyproject.toml
+            requirements*.txt
+
+      - name: Install dependencies (dev extras)
+        run: |
+          python -m pip install -U pip wheel setuptools
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Show environment
+        run: |
+          python -V
+          pip -V
+          pip list
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Black (format check)
+        run: black --check .
+
+      - name: Cache mypy
+        uses: actions/cache@v4
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py${{ matrix.python-version }}-
+            ${{ hashFiles('pyproject.toml', 'mypy.ini',
+              '.mypy.ini', '**/*.pyi') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py${{ matrix.python-version }}-
+            mypy-${{ runner.os }}-
+
+      - name: Mypy (type check)
+        run: mypy --cache-dir=.mypy_cache .
+
+      - name: Pre-commit (PR only)
+        if: github.event_name == 'pull_request'
+        run: pre-commit run --all-files --show-diff-on-failure
+
+      - name: Pytest
+        run: |
+          pytest -q --maxfail=1 -r fE \
+            --cov=bots --cov=libs --cov-report=xml \
+            --junitxml=test-results/pytest.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: |
+            test-results/pytest.xml
+            coverage.xml
+          retention-days: 7
+
+  windows-smoke:
+    name: Windows smoke test
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal deps
+        run: |
+          python -m pip install -U pip wheel setuptools
+          python -m pip install aiogram
+
+      - name: Smoke import
+        run: |
+          python -c "import aiogram; print('aiogram:', aiogram.__version__)"

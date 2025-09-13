@@ -1,0 +1,112 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_boilerplate"
+description = "python_dev_enviroment"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = [
+  "playwright>=1.47.0",
+  "pandas>=2.2",
+  "openpyxl>=3.1"
+]
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.12.11",
+  "black>=25.1.0",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=4.1",
+  "mypy>=1.17.1",
+  "pre-commit>=3.7",
+  "coverage[toml]>=7.6",
+  "anybadge>=1.16",
+  "pip-audit>=2.7",
+  "types-PyYAML>=6.0.12.20250822",
+  "pytest-builtin-types",
+  "types-requests"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+# ---------- Black ----------
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+skip-string-normalization = false
+
+# ---------- Ruff (новая схема 0.6+) ----------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+respect-gitignore = true
+exclude = ["*.j2"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PT", "RUF", "C4", "ANN"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+# Часто удобно игнорить F401 в __init__.py, где реэкспортируем API:
+per-file-ignores = { "__init__.py" = ["F401"] }
+
+[tool.ruff.lint.isort]
+known-first-party = ["scripts"]
+combine-as-imports = true
+lines-after-imports = 2
+
+# Форматирование отдадим Black; Ruff не будет форматить код как форматтер.
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+strict_optional = false
+disallow_untyped_defs = false
+files = ["scripts", "tests"]
+exclude = "(?i)^(venv|\\.venv|build|dist|\\.git)(/|$)"
+cache_dir = ".mypy_cache"
+
+[[tool.mypy.overrides]]
+module = ["anybadge.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["playwright.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+
+[tool.coverage.run]
+branch = true
+source = ["scripts"]
+relative_files = true
+omit = [
+  "*/.venv/*",
+  "*/.venv-wsl/*",
+  "tests/**",
+  "**/__init__.py",
+  "**/__main__.py",
+]
+parallel = true
+concurrency = ["thread", "multiprocessing"]
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = true
+fail_under = 0
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]

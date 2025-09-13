@@ -1,0 +1,30 @@
+version: 1.0
+linter: qodana-python-community
+
+projectJDK: "Python 3.11"  # метаданные для отчёта
+
+profile:
+  name: "qodana.recommended"  # базовый набор инспекций
+
+# Устанавливаем зависимости, чтобы инспекции «понимали» импорты
+bootstrap: |
+  python -m pip install -U pip setuptools wheel
+  # если есть lock-файлы — используем самый полный
+  if [ -f requirements-full.txt ]; then pip install -r requirements-full.txt; \
+  elif [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; \
+  elif [ -f requirements.txt ]; then pip install -r requirements.txt; \
+  else pip install -e ".[dev]" || pip install -e .; fi
+
+# Исключаем каталоги из анализа
+exclude:
+  - name: "Generated"
+    paths:
+      - .venv
+      - .venv-wsl
+      - .i18n_cache
+      - dist
+      - build
+      - htmlcov
+      - badges
+      - logs
+      - "**/__pycache__"

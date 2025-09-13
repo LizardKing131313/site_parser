@@ -1,0 +1,179 @@
+---
+name: CI Meta (workflows & repo hygiene)
+
+"on":
+  push:
+    paths:
+      - ".github/**"
+      - "**/*.md"
+      - ".editorconfig"
+  pull_request:
+    paths:
+      - ".github/**"
+      - "**/*.md"
+      - ".editorconfig"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-meta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: Actionlint (workflows sanity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go (for actionlint install)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install actionlint (no GitHub API)
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y shellcheck
+
+      - name: Run actionlint (+shellcheck)
+        run: |
+          ~/go/bin/actionlint -color \
+          -shellcheck="$(command -v shellcheck)" \
+          .github/workflows/*.yml
+
+  yamllint:
+    name: Yamllint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install yamllint
+        run: pip install --disable-pip-version-check --no-cache-dir yamllint
+
+      - name: Run yamllint on .github
+        run: |
+          yamllint -s \
+            .github/workflows/*.yml || \
+            (echo "::warning::Yamllint warnings found"; exit 1)
+
+  markdownlint:
+    name: Markdownlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install markdownlint-cli2 (no GitHub API)
+        run: npm i -g markdownlint-cli2
+
+      - name: Run markdownlint
+        run: |
+          markdownlint-cli2 "**/*.md" \
+          "#node_modules" "#.venv" ".venv-wsl" "#.git" \
+          "#.i18n_cache" || \
+          (echo "::warning::Markdownlint issues found"; exit 1)
+
+  codeowners:
+    name: Validate CODEOWNERS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check CODEOWNERS presence
+        id: codeowners
+        shell: bash
+        run: |
+          if [ -f ".github/CODEOWNERS" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate CODEOWNERS
+        if: ${{ steps.codeowners.outputs.present == 'true' }}
+        uses: mszostok/codeowners-validator@v0.7.3
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          checks: "syntax,owners,duppatterns"
+
+      - name: CODEOWNERS missing (notice)
+        if: ${{ steps.codeowners.outputs.present == 'false' }}
+        run: >
+          echo "::notice title=CODEOWNERS not found::
+          .github/CODEOWNERS is missing.
+          Skipping validation."
+
+  # 6) Secrets scan (non-blocking): gitleaks с SARIF + артефактом
+  gitleaks:
+    name: Gitleaks (secrets scan, warn-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout (full history not required)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go (for gitleaks install)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install gitleaks (no GitHub API)
+        run: go install github.com/zricethezav/gitleaks/v8@latest
+
+      - name: Run gitleaks (non-blocking)
+        run: |
+          ~/go/bin/gitleaks detect \
+            --redact \
+            --no-banner \
+            --verbose \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            || (echo "::warning::Secrets found. See SARIF report."; true)
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+      - name: Upload gitleaks artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          retention-days: 7
