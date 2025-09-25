@@ -10,23 +10,27 @@ requires-python = ">=3.11"
 dependencies = [
   "playwright>=1.47.0",
   "pandas>=2.2",
-  "openpyxl>=3.1"
+  "openpyxl>=3.1",
+  "requests>=2.32.3",
+  "beautifulsoup4>=4.12.3",
+  "lxml>=5.2.1",
 ]
 [project.optional-dependencies]
 dev = [
-  "ruff>=0.12.11",
-  "black>=25.1.0",
+  "ruff>=0.13.2",
+  "black>=25.9.0",
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
   "pytest-cov>=4.1",
-  "mypy>=1.17.1",
+  "mypy>=1.18.2",
   "pre-commit>=3.7",
-  "coverage[toml]>=7.6",
+  "coverage[toml]>=7.10.7",
   "anybadge>=1.16",
   "pip-audit>=2.7",
-  "types-PyYAML>=6.0.12.20250822",
+  "types-PyYAML>=6.0.12.20250915",
   "pytest-builtin-types",
-  "types-requests"
+  "types-requests",
+  "types-beautifulsoup4",
 ]
 
 [tool.setuptools.packages.find]

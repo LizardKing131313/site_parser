@@ -7,6 +7,9 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Final
 
+import requests
+from bs4 import BeautifulSoup
+
 from .playwright_fast import UA_DESKTOP, UA_MOBILE, UserAgentKind, fast_context, quick_get
 
 
@@ -93,11 +96,62 @@ async def _run(urls: list[str]) -> int:
     return 2
 
 
+def can_parse_without_pw(url: str) -> bool:
+    try:
+        request = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            },
+            timeout=10,
+        )
+        request.raise_for_status()
+    except Exception as e:
+        print(f"[FAIL] network error: {e}")
+        return False
+
+    content_type = request.headers.get("Content-Type", "")
+    if "application/json" in content_type:
+        print("[OK] JSON response → no playwright required")
+        return True
+
+    if "text/html" not in content_type:
+        print(f"[WARN] wierd Content-Type={content_type} → Playwright required")
+        return False
+
+    html = request.text
+    if len(html) < 10000:
+        print("[MISS] Too few HTML → Playwright required")
+        return False
+
+    if "Please enable JavaScript" in html or "<noscript>" in html:
+        print("[MISS] JS required → Playwright required")
+        return False
+
+    soup = BeautifulSoup(html, "lxml")
+    if soup.select("table, article, div"):
+        print("[OK] Elements found → no playwright required")
+        return True
+
+    print("[MISS] No data → Playwright required")
+    return False
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("Usage: python smoke.py <URL> [URL2 ...]")
         return 64
     urls = sys.argv[1:]
+
+    for url in urls:
+        print(f"--- Checking {url} ---")
+        if can_parse_without_pw(url):
+            print(f"[OK] {url} → no playwright required\n")
+        else:
+            print(f"[MISS] {url} → playwright required\n")
+
     return asyncio.run(_run(urls))
 
 
